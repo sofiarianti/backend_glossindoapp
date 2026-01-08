@@ -12,6 +12,7 @@ import (
 	"github.com/joho/godotenv"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func InitDB() *gorm.DB {
@@ -36,12 +37,16 @@ func InitDB() *gorm.DB {
 			
 			dbname := strings.TrimPrefix(u.Path, "/")
 			
+			// Add tls=true if needed, or stick to default. 
+			// Generally for public connections it might be needed, but let's keep it simple first.
 			dsn = fmt.Sprintf("%s:%s@tcp(%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 				u.User.Username(),
 				password,
 				host,
 				dbname,
 			)
+			
+			log.Printf("Connecting to DB Host: %s, DB Name: %s", host, dbname)
 		}
 	}
 
@@ -54,9 +59,24 @@ func InitDB() *gorm.DB {
 			os.Getenv("DB_PORT"),
 			os.Getenv("DB_NAME"),
 		)
+		log.Println("Connecting to DB using individual env vars")
 	}
 
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	// Configure GORM Logger
+	newLogger := logger.New(
+		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
+		logger.Config{
+			SlowThreshold:             time.Second,   // Slow SQL threshold
+			LogLevel:                  logger.Info,   // Log all SQL
+			IgnoreRecordNotFoundError: true,          // Ignore ErrRecordNotFound error for logger
+			ParameterizedQueries:      false,         // Include params in log for debugging
+			Colorful:                  false,         // Disable color
+		},
+	)
+
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
+		Logger: newLogger,
+	})
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
@@ -67,13 +87,8 @@ func InitDB() *gorm.DB {
 		log.Fatal("Failed to get underlying sql.DB:", err)
 	}
 
-	// SetMaxIdleConns sets the maximum number of connections in the idle connection pool.
 	sqlDB.SetMaxIdleConns(10)
-
-	// SetMaxOpenConns sets the maximum number of open connections to the database.
 	sqlDB.SetMaxOpenConns(100)
-
-	// SetConnMaxLifetime sets the maximum amount of time a connection may be reused.
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	// Auto Migrate

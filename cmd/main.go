@@ -32,6 +32,26 @@ func main() {
 	// router.PathPrefix("/trailers/").Handler(http.StripPrefix("/trailers/", http.FileServer(http.Dir("trailers"))))
 	// router.PathPrefix("/qrcode/").Handler(http.StripPrefix("/qrcode/", http.FileServer(http.Dir("public/qrcode/"))))
 
+	// Health Check Endpoints
+	router.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}).Methods("GET", "OPTIONS")
+
+	router.HandleFunc("/api/health/db", func(w http.ResponseWriter, r *http.Request) {
+		sqlDB, err := db.DB()
+		if err != nil {
+			http.Error(w, "Failed to get DB object: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := sqlDB.Ping(); err != nil {
+			http.Error(w, "DB Ping Failed: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("DB Connected"))
+	}).Methods("GET", "OPTIONS")
+
 	// Setup routes
 	route.SetupRoutesUser(router, db)
 	route.SetupRoutesAbsensi(router, db)
@@ -61,6 +81,8 @@ func main() {
 		fmt.Printf("GET: http://localhost:%s/api/cuti\n", port)
 		fmt.Printf("POST: http://localhost:%s/api/cuti\n", port)
 		fmt.Printf("POST: http://localhost:%s/api/auth/google\n", port)
+		fmt.Printf("GET: http://localhost:%s/api/health\n", port)
+		fmt.Printf("GET: http://localhost:%s/api/health/db\n", port)
 		// fmt.Printf("GET: http://localhost:%s/api/\n", port) // Update with actual routes
 		fmt.Printf("=========================================\n")
 
