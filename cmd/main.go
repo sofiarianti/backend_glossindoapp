@@ -42,7 +42,7 @@ func main() {
 	// Konfigurasi server
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8081"
+		port = "8080"
 	}
 
 	srv := &http.Server{
