@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"api/internal/entity"
 	"api/internal/usecase"
 	"gorm.io/gorm"
 )
@@ -142,19 +141,6 @@ func (c *AuthController) GoogleAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// User belum ada, buat user baru
-	newUser := entity.User{
-		GoogleID: tokenInfo.Sub,
-		Email:    tokenInfo.Email,
-		Name:     tokenInfo.Name,
-		PhotoURL: tokenInfo.Picture,
-	}
-
-	if err := c.userUsecase.CreateUser(&newUser); err != nil {
-		http.Error(w, "Failed to create user: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(newUser)
+	// Jika user tidak ditemukan, kembalikan error 404
+	http.Error(w, "User not found. Please register first.", http.StatusNotFound)
 }
