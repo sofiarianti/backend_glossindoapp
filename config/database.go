@@ -19,7 +19,12 @@ func InitDB() (*gorm.DB, error) {
 	var dsn string
 	
 	// Cek apakah ada environment variable DATABASE_URL (biasanya dari Railway)
+	// Support juga MYSQL_URL (format default Railway MySQL plugin)
 	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		databaseURL = os.Getenv("MYSQL_URL")
+	}
+
 	if databaseURL != "" {
 		// Parse URL: mysql://user:pass@host:port/dbname
 		u, err := url.Parse(databaseURL)
@@ -49,16 +54,38 @@ func InitDB() (*gorm.DB, error) {
 		}
 	}
 
-	// Jika DSN masih kosong
+	// Jika DSN masih kosong, coba fallback ke variabel individual
 	if dsn == "" {
-		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local&interpolateParams=true&timeout=10s",
-			os.Getenv("DB_USER"),
-			os.Getenv("DB_PASSWORD"),
-			os.Getenv("DB_HOST"),
-			os.Getenv("DB_PORT"),
-			os.Getenv("DB_NAME"),
-		)
-		log.Println("Connecting to DB using individual env vars")
+		// Helper untuk membaca ENV dengan fallback key
+		getEnv := func(key, fallbackKey string) string {
+			if val := os.Getenv(key); val != "" {
+				return val
+			}
+			return os.Getenv(fallbackKey)
+		}
+
+		user := getEnv("DB_USER", "MYSQLUSER")
+		pass := getEnv("DB_PASSWORD", "MYSQLPASSWORD")
+		host := getEnv("DB_HOST", "MYSQLHOST")
+		port := getEnv("DB_PORT", "MYSQLPORT")
+		dbname := getEnv("DB_NAME", "MYSQLDATABASE")
+
+		// Jika host kosong, berarti tidak ada konfigurasi sama sekali
+		if host != "" {
+			dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local&interpolateParams=true&timeout=10s",
+				user,
+				pass,
+				host,
+				port,
+				dbname,
+			)
+			log.Printf("Connecting to DB using individual env vars (Host: %s)", host)
+		}
+	}
+
+	// Jika masih kosong juga, berarti gagal total
+	if dsn == "" {
+		return nil, fmt.Errorf("no database configuration found (checked DATABASE_URL, MYSQL_URL, DB_*, MYSQL*)")
 	}
 
 	// Configure GORM Logger
