@@ -19,9 +19,9 @@ import (
 
 func main() {
 	// Initialize DB
-	db := config.InitDB()
+	db, dbErr := config.InitDB()
 	if db == nil {
-		log.Println("WARNING: DB not connected, server still running")
+		log.Printf("WARNING: DB not connected, server still running. Error: %v", dbErr)
 	}
 
 	// Initialize router
@@ -50,7 +50,11 @@ func main() {
 
 	router.HandleFunc("/api/health/db", func(w http.ResponseWriter, r *http.Request) {
 		if db == nil {
-			http.Error(w, "DB Not Initialized", http.StatusServiceUnavailable)
+			msg := "DB Not Initialized"
+			if dbErr != nil {
+				msg += fmt.Sprintf(". Error: %v", dbErr)
+			}
+			http.Error(w, msg, http.StatusServiceUnavailable)
 			return
 		}
 		sqlDB, err := db.DB()

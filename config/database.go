@@ -15,7 +15,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func InitDB() *gorm.DB {
+func InitDB() (*gorm.DB, error) {
 	var dsn string
 	
 	// Cek apakah ada environment variable DATABASE_URL (biasanya dari Railway)
@@ -79,14 +79,14 @@ func InitDB() *gorm.DB {
 	})
 	if err != nil {
 		log.Println("DB connection failed:", err)
-		return nil
+		return nil, err
 	}
 
 	// Connection Pooling Configuration
 	sqlDB, err := db.DB()
 	if err != nil {
 		log.Println("Failed to get underlying sql.DB:", err)
-		return nil
+		return nil, err
 	}
 
 	// Tuning pool untuk environment container/serverless
@@ -109,7 +109,7 @@ func InitDB() *gorm.DB {
 		log.Println("Skipping AutoMigrate in production environment")
 	}
 
-	return db
+	return db, nil
 }
 
 func init() {
