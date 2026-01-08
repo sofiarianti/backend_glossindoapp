@@ -22,24 +22,23 @@ func InitDB() *gorm.DB {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL != "" {
 		// Parse URL: mysql://user:pass@host:port/dbname
-		// GORM DSN: user:pass@tcp(host:port)/dbname?charset=utf8mb4&parseTime=True&loc=Local
-		
 		u, err := url.Parse(databaseURL)
 		if err != nil {
 			log.Printf("Warning: Failed to parse DATABASE_URL: %v. Falling back to individual vars.", err)
 		} else {
 			password, _ := u.User.Password()
 			host := u.Host
-			// Handle case where host might not have port, though Railway usually includes it
 			if !strings.Contains(host, ":") {
-				host += ":3306" // Default port
+				host += ":3306"
 			}
 			
 			dbname := strings.TrimPrefix(u.Path, "/")
 			
-			// Add tls=true if needed, or stick to default. 
-			// Generally for public connections it might be needed, but let's keep it simple first.
-			dsn = fmt.Sprintf("%s:%s@tcp(%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+			// Tambahkan parameter untuk performa dan timeout
+			// interpolateParams=true: Mengurangi round-trip ke DB
+			// timeout=10s: Batas waktu koneksi awal
+			// readTimeout=30s: Batas waktu baca query
+			dsn = fmt.Sprintf("%s:%s@tcp(%s)/%s?charset=utf8mb4&parseTime=True&loc=Local&interpolateParams=true&timeout=10s&readTimeout=30s&writeTimeout=30s",
 				u.User.Username(),
 				password,
 				host,
@@ -50,9 +49,9 @@ func InitDB() *gorm.DB {
 		}
 	}
 
-	// Jika DSN masih kosong (tidak ada DATABASE_URL atau gagal parse), gunakan variabel individual
+	// Jika DSN masih kosong
 	if dsn == "" {
-		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local&interpolateParams=true&timeout=10s",
 			os.Getenv("DB_USER"),
 			os.Getenv("DB_PASSWORD"),
 			os.Getenv("DB_HOST"),
@@ -64,44 +63,51 @@ func InitDB() *gorm.DB {
 
 	// Configure GORM Logger
 	newLogger := logger.New(
-		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
+		log.New(os.Stdout, "\r\n", log.LstdFlags), 
 		logger.Config{
-			SlowThreshold:             time.Second,   // Slow SQL threshold
-			LogLevel:                  logger.Info,   // Log all SQL
-			IgnoreRecordNotFoundError: true,          // Ignore ErrRecordNotFound error for logger
-			ParameterizedQueries:      false,         // Include params in log for debugging
-			Colorful:                  false,         // Disable color
+			SlowThreshold:             200 * time.Millisecond, // Log jika query > 200ms
+			LogLevel:                  logger.Info,            
+			IgnoreRecordNotFoundError: true,                   
+			ParameterizedQueries:      false,                  
+			Colorful:                  false,                  
 		},
 	)
 
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
 		Logger: newLogger,
+		PrepareStmt: true, // Cache prepared statements untuk performa
 	})
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		log.Println("DB connection failed:", err)
+		return nil
 	}
 
 	// Connection Pooling Configuration
 	sqlDB, err := db.DB()
 	if err != nil {
-		log.Fatal("Failed to get underlying sql.DB:", err)
+		log.Println("Failed to get underlying sql.DB:", err)
+		return nil
 	}
 
-	sqlDB.SetMaxIdleConns(10)
-	sqlDB.SetMaxOpenConns(100)
-	sqlDB.SetConnMaxLifetime(time.Hour)
+	// Tuning pool untuk environment container/serverless
+	sqlDB.SetMaxIdleConns(5)        // Jangan terlalu banyak idle connection
+	sqlDB.SetMaxOpenConns(50)       // Batas maksimal koneksi terbuka
+	sqlDB.SetConnMaxLifetime(5 * time.Minute) // Refresh koneksi tiap 5 menit untuk menghindari stale connection
 
-	// Auto Migrate
-	// Only User entity exists for now
-	db.AutoMigrate(&entity.User{})
-	db.AutoMigrate(&entity.Absensi{})
-	db.AutoMigrate(&entity.Cuti{})
-	
-	// db.AutoMigrate(&entity.Visitor{},&entity.Staff{},&entity.Cinema{},&entity.Theater{},&entity.Movie{},&entity.Schedule{},&entity.Booking{},&entity.Payment{},&entity.Log_aktivitas{},&entity.Seat{},&entity.Method{},&entity.Poster{})
-	// db.AutoMigrate(&entity.Diskon{})
-	// db.AutoMigrate(&entity.DetailMovie{})
-	// db.AutoMigrate(&entity.Cast{})
-	// db.AutoMigrate(&entity.Region{})
+	// Auto Migrate (Hanya di local/dev, atau jika ENV != production untuk mempercepat start)
+	// Di production, sebaiknya migrasi dijalankan manual atau via pipeline
+	if os.Getenv("ENV") != "production" {
+		log.Println("Starting AutoMigrate...")
+		start := time.Now()
+		
+		db.AutoMigrate(&entity.User{})
+		db.AutoMigrate(&entity.Absensi{})
+		db.AutoMigrate(&entity.Cuti{})
+		
+		log.Printf("AutoMigrate finished in %v", time.Since(start))
+	} else {
+		log.Println("Skipping AutoMigrate in production environment")
+	}
 
 	return db
 }
@@ -109,7 +115,6 @@ func InitDB() *gorm.DB {
 func init() {
 	err := godotenv.Load()
 	if err != nil {
-		// Log but don't fail, as env might be set in system
-		log.Println("Warning: Error loading .env file")
+		log.Println("Warning: Error loading .env file (ok in production)")
 	}
 }

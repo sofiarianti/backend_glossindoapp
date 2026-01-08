@@ -20,12 +20,22 @@ import (
 func main() {
 	// Initialize DB
 	db := config.InitDB()
+	if db == nil {
+		log.Println("WARNING: DB not connected, server still running")
+	}
 
 	// Initialize router
 	router := mux.NewRouter()
 
 	// Add middleware
 	router.Use(middleware.LoggingMiddleware)
+	router.Use(middleware.RecoveryMiddleware)
+
+	// Root Health Check (WAJIB untuk Railway)
+	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}).Methods("GET", "HEAD")
 
 	// Static files (commented out as directories might not exist yet)
 	// router.PathPrefix("/posters/").Handler(http.StripPrefix("/posters/", http.FileServer(http.Dir("./posters/"))))
@@ -39,6 +49,10 @@ func main() {
 	}).Methods("GET", "OPTIONS")
 
 	router.HandleFunc("/api/health/db", func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			http.Error(w, "DB Not Initialized", http.StatusServiceUnavailable)
+			return
+		}
 		sqlDB, err := db.DB()
 		if err != nil {
 			http.Error(w, "Failed to get DB object: "+err.Error(), http.StatusInternalServerError)
