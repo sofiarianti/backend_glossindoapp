@@ -51,5 +51,7 @@ func SetupRoutesAuth(router *mux.Router, db *gorm.DB) {
     authController := controller.NewAuthController(db)
 
     // Auth routes
-    router.HandleFunc("/api/auth/google", authController.GoogleAuth).Methods("POST", "OPTIONS")
+	router.HandleFunc("/api/auth/google", authController.GoogleAuth).Methods("POST", "OPTIONS")
+	router.HandleFunc("/api/auth/register", authController.Register).Methods("POST", "OPTIONS")
+	router.HandleFunc("/api/auth/login", authController.Login).Methods("POST", "OPTIONS")
 }
